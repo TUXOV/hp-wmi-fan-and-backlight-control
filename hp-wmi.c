@@ -287,6 +287,7 @@ struct hp_fan_control {
 	bool have_manual_control;
 	enum hp_fan_control_mode mode;
 	int max_rpms[2];
+	int target_rpms[2];
 };
 
 struct hp_mc_leds {
@@ -713,17 +714,27 @@ static int hp_wmi_set_fan_speed(int fan, int fan_speed)
 	// We are dividing by 100 because the bios expects the value in hundreds of RPM.
 	if (fan == 0) {
 		fan1_speed = fan_speed / 100;
-		if (is_victus_s_thermal_profile()) {
-			fan2_speed = hp_wmi_get_fan_speed_victus_s(1) / 100;
+		hp_fan_control.target_rpms[0] = fan_speed;
+		if (hp_fan_control.target_rpms[1] == 0) {
+			if (is_victus_s_thermal_profile()) {
+				fan2_speed = hp_wmi_get_fan_speed_victus_s(1) / 100;
+			} else {
+				fan2_speed = hp_wmi_get_fan_speed(1) / 100;
+			}
 		} else {
-			fan2_speed = hp_wmi_get_fan_speed(1) / 100;
+			fan2_speed = hp_fan_control.target_rpms[1] / 100;
 		}
 	} else if (fan == 1) {
 		fan2_speed = fan_speed / 100;
-		if (is_victus_s_thermal_profile()) {
-			fan1_speed = hp_wmi_get_fan_speed_victus_s(0) / 100;
+		hp_fan_control.target_rpms[1] = fan_speed;
+		if (hp_fan_control.target_rpms[0] == 0) {
+			if (is_victus_s_thermal_profile()) {
+				fan1_speed = hp_wmi_get_fan_speed_victus_s(0) / 100;
+			} else {
+				fan1_speed = hp_wmi_get_fan_speed(0) / 100;
+			}
 		} else {
-			fan1_speed = hp_wmi_get_fan_speed(0) / 100;
+			fan1_speed = hp_fan_control.target_rpms[0] / 100;
 		}
 	} else {
 		return -EINVAL;
@@ -2430,6 +2441,9 @@ static int hp_wmi_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
 		case hwmon_fan_max:
 			*val = hp_fan_control.max_rpms[channel];
 			break;
+		case hwmon_fan_target:
+			*val = hp_fan_control.target_rpms[channel];
+			break;
 		default:
 			return -EINVAL;
 		}
@@ -2468,12 +2482,17 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 			hp_fan_control.mode = HP_FAN_MODE_MAX;
 			if (is_victus_s_thermal_profile())
 				hp_wmi_get_fan_count_userdefine_trigger();
+
+			memcpy(hp_fan_control.target_rpms,
+			       hp_fan_control.max_rpms,
+			       sizeof(hp_fan_control.target_rpms));
 			return hp_wmi_fan_speed_max_set(1);
 		case 1:
 			hp_fan_control.mode = HP_FAN_MODE_MANUAL;
 			return 0;
 		case 2:
 			hp_fan_control.mode = HP_FAN_MODE_AUTOMATIC;
+			hp_fan_control.target_rpms[0] = hp_fan_control.target_rpms[1] = 0;
 			if (is_victus_s_thermal_profile()) {
 				hp_wmi_get_fan_count_userdefine_trigger();
 				return hp_wmi_fan_speed_max_reset();
