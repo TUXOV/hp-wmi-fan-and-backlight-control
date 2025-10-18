@@ -1,6 +1,6 @@
 ## hp-wmi manual fan + keyboard RGB control
 
-This is an Initial module for manual fan control and keyboard RGB for devices that support it. Single‑zone RGB works now; I plan to add 4‑zone but I need testers.
+This is an Initial module for manual fan control and keyboard RGB for devices that support it. Single‑zone RGB works now; I plan to add 4‑zone but I need testers. I also plan to upstream this module, but i need to be sure that the module is stable enough before upstreaming it.
 
 Please star the repo if this driver works for you. Thanks!
 
