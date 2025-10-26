@@ -1458,12 +1458,7 @@ static enum led_brightness hp_kbd_get_brightness(struct led_classdev *led_cdev)
 static int hp_kbd_set_brightness(struct led_classdev *led_cdev,
 					enum led_brightness brightness)
 {
-	u8 data;
-	if (brightness == LED_OFF) {
-		data= HP_BACKLIGHT_OFF;
-	} else {
-		data = HP_BACKLIGHT_ON;
-	}
+	u8 data = HP_BACKLIGHT_ON;
 	hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
 			 sizeof(data), sizeof(data));
 
