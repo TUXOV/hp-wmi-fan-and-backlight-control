@@ -1490,7 +1490,7 @@ static void hp_kbd_brightness_set_by_hwd(u32 event_data)
 	u8 brightness;
 	if (event_data == HP_EVENTDATA_BACKLIGHT_ON) {
 		// brightness = hp_multicolor_leds.last_brightness ? hp_multicolor_leds.last_brightness : LED_FULL;
-		brightness = LED_FULL
+		brightness = LED_FULL;
 	} else if (event_data == HP_EVENTDATA_BACKLIGHT_OFF) {
 		brightness = LED_OFF;
 	} else {
@@ -1583,7 +1583,7 @@ static int __init hp_kbd_rgb_setup(void)
 		case HP_KEYBOARD_TYPE_SINGLEZONE_WITHOUT_NUMPAD:
 			pr_info("keyboard type %d, registering single zone RGB keyboard support\n",
 				keyboard_type);
-			return hp_mc_leds_register(1);
+			return hp_mc_leds_register(4);
 			break;
 		default:
 			pr_info("Unknown keyboard type %d, RGB keyboard support not available\n",
