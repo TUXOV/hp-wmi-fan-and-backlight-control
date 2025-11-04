@@ -32,6 +32,7 @@
 #include <linux/dmi.h>
 #include <linux/leds.h>
 #include <linux/led-class-multicolor.h>
+#include <linux/version.h>
 
 MODULE_AUTHOR("Matthew Garrett <mjg59@srcf.ucam.org>");
 MODULE_DESCRIPTION("HP laptop WMI driver");
@@ -350,7 +351,11 @@ static DEFINE_MUTEX(active_platform_profile_lock);
 static struct input_dev *hp_wmi_input_dev;
 static struct input_dev *camera_shutter_input_dev;
 static struct platform_device *hp_wmi_platform_dev;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 static struct device *platform_profile_device;
+#else
+static struct platform_profile_handler platform_profile_handler;
+#endif
 static struct notifier_block platform_power_source_nb;
 static struct hp_mc_leds hp_multicolor_leds;
 static struct hp_fan_control hp_fan_control;
@@ -1599,7 +1604,11 @@ static int platform_profile_omen_get_ec(enum platform_profile_option *profile)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int platform_profile_omen_get(struct device *dev,
+#else
+static int platform_profile_omen_get(struct platform_profile_handler *pprof,
+#endif
 				     enum platform_profile_option *profile)
 {
 	/*
@@ -1696,7 +1705,11 @@ static int platform_profile_omen_set_ec(enum platform_profile_option profile)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int platform_profile_omen_set(struct device *dev,
+#else
+static int platform_profile_omen_set(struct platform_profile_handler *pprof,
+#endif
 				     enum platform_profile_option profile)
 {
 	int err;
@@ -1723,7 +1736,11 @@ static int thermal_profile_set(int thermal_profile)
 							   sizeof(thermal_profile), 0);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int hp_wmi_platform_profile_get(struct device *dev,
+#else
+static int hp_wmi_platform_profile_get(struct platform_profile_handler *pprof,
+#endif
 					enum platform_profile_option *profile)
 {
 	int tp;
@@ -1752,7 +1769,11 @@ static int hp_wmi_platform_profile_get(struct device *dev,
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int hp_wmi_platform_profile_set(struct device *dev,
+#else
+static int hp_wmi_platform_profile_set(struct platform_profile_handler *pprof,
+#endif
 					enum platform_profile_option profile)
 {
 	int err, tp;
@@ -1818,12 +1839,14 @@ static int platform_profile_victus_get_ec(enum platform_profile_option *profile)
 	return 0;
 }
 
+/* Not needed as victus uses same thermal profile as omen
 static int platform_profile_victus_get(struct device *dev,
 				       enum platform_profile_option *profile)
 {
-	/* Same behaviour as platform_profile_omen_get */
+	// Same behaviour as platform_profile_omen_get
 	return platform_profile_omen_get(dev, profile);
 }
+*/
 
 static int platform_profile_victus_set_ec(enum platform_profile_option profile)
 {
@@ -1989,7 +2012,11 @@ static int platform_profile_victus_s_set_ec(enum platform_profile_option profile
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int platform_profile_victus_s_set(struct device *dev,
+#else
+static int platform_profile_victus_s_set(struct platform_profile_handler *pprof,
+#endif
 					 enum platform_profile_option profile)
 {
 	int err;
@@ -2005,7 +2032,11 @@ static int platform_profile_victus_s_set(struct device *dev,
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int platform_profile_victus_set(struct device *dev,
+#else
+static int platform_profile_victus_set(struct platform_profile_handler *pprof,
+#endif
 				       enum platform_profile_option profile)
 {
 	int err;
@@ -2021,6 +2052,7 @@ static int platform_profile_victus_set(struct device *dev,
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,14,0)
 static int hp_wmi_platform_profile_probe(void *drvdata, unsigned long *choices)
 {
 	if (is_omen_thermal_profile()) {
@@ -2040,6 +2072,7 @@ static int hp_wmi_platform_profile_probe(void *drvdata, unsigned long *choices)
 
 	return 0;
 }
+#endif
 
 static int omen_powersource_event(struct notifier_block *nb,
 				  unsigned long value,
@@ -2170,6 +2203,7 @@ static inline void victus_s_unregister_powersource_event_handler(void)
 	unregister_acpi_notifier(&platform_power_source_nb);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 static const struct platform_profile_ops platform_profile_omen_ops = {
 	.probe = hp_wmi_platform_profile_probe,
 	.profile_get = platform_profile_omen_get,
@@ -2178,7 +2212,7 @@ static const struct platform_profile_ops platform_profile_omen_ops = {
 
 static const struct platform_profile_ops platform_profile_victus_ops = {
 	.probe = hp_wmi_platform_profile_probe,
-	.profile_get = platform_profile_victus_get,
+	.profile_get = platform_profile_omen_get,
 	.profile_set = platform_profile_victus_set,
 };
 
@@ -2193,10 +2227,16 @@ static const struct platform_profile_ops hp_wmi_platform_profile_ops = {
 	.profile_get = hp_wmi_platform_profile_get,
 	.profile_set = hp_wmi_platform_profile_set,
 };
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 static int thermal_profile_setup(struct platform_device *device)
 {
 	const struct platform_profile_ops *ops;
+#else
+static int thermal_profile_setup(void)
+{
+#endif
 	int err, tp;
 
 	if (is_omen_thermal_profile()) {
@@ -2212,7 +2252,14 @@ static int thermal_profile_setup(struct platform_device *device)
 		if (err < 0)
 			return err;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 		ops = &platform_profile_omen_ops;
+#else
+		platform_profile_handler.profile_get = platform_profile_omen_get;
+		platform_profile_handler.profile_set = platform_profile_omen_set;
+		set_bit(PLATFORM_PROFILE_COOL, platform_profile_handler.choices);
+#endif
+
 	} else if (is_victus_thermal_profile()) {
 		err = platform_profile_victus_get_ec(&active_platform_profile);
 		if (err < 0)
@@ -2226,7 +2273,13 @@ static int thermal_profile_setup(struct platform_device *device)
 		if (err < 0)
 			return err;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 		ops = &platform_profile_victus_ops;
+#else
+		platform_profile_handler.profile_get = platform_profile_omen_get;
+		platform_profile_handler.profile_set = platform_profile_victus_set;
+		set_bit(PLATFORM_PROFILE_QUIET, platform_profile_handler.choices);
+#endif
 	} else if (is_victus_s_thermal_profile()) {
 		/*
 		 * Being unable to retrieve laptop's current thermal profile,
@@ -2238,7 +2291,13 @@ static int thermal_profile_setup(struct platform_device *device)
 		if (err < 0)
 			return err;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 		ops = &platform_profile_victus_s_ops;
+#else
+		platform_profile_handler.profile_get = platform_profile_omen_get;
+		platform_profile_handler.profile_set = platform_profile_victus_s_set;
+		set_bit(PLATFORM_PROFILE_LOW_POWER, platform_profile_handler.choices);
+#endif
 	} else {
 		tp = thermal_profile_get();
 
@@ -2253,6 +2312,7 @@ static int thermal_profile_setup(struct platform_device *device)
 		if (err)
 			return err;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 		ops = &hp_wmi_platform_profile_ops;
 	}
 
@@ -2260,6 +2320,21 @@ static int thermal_profile_setup(struct platform_device *device)
 								 NULL, ops);
 	if (IS_ERR(platform_profile_device))
 		return PTR_ERR(platform_profile_device);
+
+#else
+		platform_profile_handler.profile_get = hp_wmi_platform_profile_get;
+		platform_profile_handler.profile_set = hp_wmi_platform_profile_set;
+		set_bit(PLATFORM_PROFILE_QUIET, platform_profile_handler.choices);
+		set_bit(PLATFORM_PROFILE_COOL, platform_profile_handler.choices);
+	}
+
+	set_bit(PLATFORM_PROFILE_BALANCED, platform_profile_handler.choices);
+	set_bit(PLATFORM_PROFILE_PERFORMANCE, platform_profile_handler.choices);
+
+	err = platform_profile_register(&platform_profile_handler);
+	if (err)
+		return err;
+#endif
 
 	pr_info("Registered as platform profile handler\n");
 	platform_profile_support = true;
@@ -2296,7 +2371,11 @@ static int __init hp_wmi_bios_setup(struct platform_device *device)
 	if (err < 0)
 		return err;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 	thermal_profile_setup(device);
+#else
+	thermal_profile_setup();
+#endif
 	hp_kbd_rgb_setup();
 
 
@@ -2324,6 +2403,11 @@ static void __exit hp_wmi_bios_remove(struct platform_device *device)
 		rfkill_unregister(wwan_rfkill);
 		rfkill_destroy(wwan_rfkill);
 	}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
+	if (platform_profile_support)
+		platform_profile_remove();
+#endif
 }
 
 static int hp_wmi_resume_handler(struct device *device)
