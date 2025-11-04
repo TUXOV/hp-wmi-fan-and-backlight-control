@@ -54,6 +54,9 @@ MODULE_ALIAS("wmi:5FB7F034-2C63-45E9-BE91-3D44E2C707E4");
 #define HP_BACKLIGHT_OFF 0x64
 #define HP_BACKLIGHT_ON 0xE4
 
+#define HP_EVENTDATA_BACKLIGHT_OFF 0
+#define HP_EVENTDATA_BACKLIGHT_ON 2
+
 #define ACPI_AC_CLASS "ac_adapter"
 
 #define zero_if_sup(tmp) (zero_insize_support?0:sizeof(tmp)) // use when zero insize is required
@@ -1048,6 +1051,8 @@ static struct attribute *hp_wmi_attrs[] = {
 };
 ATTRIBUTE_GROUPS(hp_wmi);
 
+static void hp_kbd_brightness_set_by_hwd(u32 event_data);
+
 static void hp_wmi_notify(union acpi_object *obj, void *context)
 {
 	u32 event_id, event_data;
@@ -1148,6 +1153,7 @@ static void hp_wmi_notify(union acpi_object *obj, void *context)
 	case HPWMI_PROXIMITY_SENSOR:
 		break;
 	case HPWMI_BACKLIT_KB_BRIGHTNESS:
+		hp_kbd_brightness_set_by_hwd(event_data);
 		break;
 	case HPWMI_PEAKSHIFT_PERIOD:
 		break;
@@ -1462,6 +1468,7 @@ static int hp_kbd_set_brightness(struct led_classdev *led_cdev,
 	hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
 			 sizeof(data), sizeof(data));
 
+	led_cdev->brightness = brightness;
 	struct led_classdev_mc *mc_cdev = lcdev_to_mccdev(led_cdev);
 	led_mc_calc_color_components(mc_cdev, brightness);
 
@@ -1477,6 +1484,28 @@ static int hp_kbd_set_brightness(struct led_classdev *led_cdev,
 	}
 	return hp_kbd_backlight_set_rgb_color(zone, red, green, blue);
 }
+
+static void hp_kbd_brightness_set_by_hwd(u32 event_data)
+{
+	u8 brightness;
+	if (event_data == HP_EVENTDATA_BACKLIGHT_ON) {
+		// brightness = hp_multicolor_leds.last_brightness ? hp_multicolor_leds.last_brightness : LED_FULL;
+		brightness = LED_FULL
+	} else if (event_data == HP_EVENTDATA_BACKLIGHT_OFF) {
+		brightness = LED_OFF;
+	} else {
+		return;
+	}
+
+	for (int i = 0; i < ARRAY_SIZE(hp_multicolor_leds.devices); i++) {
+		if (!hp_multicolor_leds.devices[i].led_cdev.name) {
+			continue;
+		}
+		led_classdev_notify_brightness_hw_changed(
+			&hp_multicolor_leds.devices[i].led_cdev, brightness);
+	}
+}
+
 
 static int __init hp_mc_leds_register(int num_zones)
 {
@@ -1501,7 +1530,7 @@ static int __init hp_mc_leds_register(int num_zones)
 		led_cdev->brightness = hp_kbd_backlight_is_on() ? LED_FULL : LED_OFF;
 		led_cdev->max_brightness = LED_FULL;
 		led_cdev->brightness_set_blocking = hp_kbd_set_brightness;
-		led_cdev->flags = LED_CORE_SUSPENDRESUME | LED_RETAIN_AT_SHUTDOWN;
+		led_cdev->flags = LED_CORE_SUSPENDRESUME | LED_RETAIN_AT_SHUTDOWN | LED_BRIGHT_HW_CHANGED;
 		led_cdev->brightness_get = hp_kbd_get_brightness;
 		mc_subled_info = devm_kzalloc(&hp_wmi_platform_dev->dev,
 					       sizeof(struct mc_subled) * 3,
