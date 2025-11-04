@@ -294,7 +294,7 @@ struct hp_fan_control {
 
 struct hp_mc_leds {
 	struct led_classdev_mc devices[4];
-	enum led_brightness last_brightness;
+	enum led_brightness last_brightness[4];
 };
 
 #define IS_HWBLOCKED(x) ((x & HPWMI_POWER_FW_OR_HW) != HPWMI_POWER_FW_OR_HW)
@@ -1450,12 +1450,19 @@ static bool hp_kbd_backlight_is_on(void) {
 
 static enum led_brightness hp_kbd_get_brightness(struct led_classdev *led_cdev)
 {
+	int zone;
+	for (zone = 0; zone < ARRAY_SIZE(hp_multicolor_leds.devices); zone++) {
+        if (hp_multicolor_leds.devices[zone].led_cdev.name == led_cdev->name) {
+            break;
+        }
+	}
+
 	bool led_on = hp_kbd_backlight_is_on();
 	if (!led_on && led_cdev->brightness != LED_OFF) {
-		hp_multicolor_leds.last_brightness = led_cdev->brightness;
+		hp_multicolor_leds.last_brightness[zone] = led_cdev->brightness;
 		return LED_OFF;
 	} else if (led_on && led_cdev->brightness == LED_OFF) {
-		return hp_multicolor_leds.last_brightness;
+		return hp_multicolor_leds.last_brightness[zone];
 	}
 
 	return led_cdev->brightness;
@@ -1482,6 +1489,8 @@ static int hp_kbd_set_brightness(struct led_classdev *led_cdev,
             break;
         }
 	}
+	pr_info("Setting keyboard backlight zone %d to R:%d G:%d B:%d\n",
+		zone, red, green, blue);
 	return hp_kbd_backlight_set_rgb_color(zone, red, green, blue);
 }
 
