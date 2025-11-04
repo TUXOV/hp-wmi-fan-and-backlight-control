@@ -1507,7 +1507,7 @@ static int __init hp_mc_leds_register(int num_zones)
 		led_cdev->brightness = hp_kbd_backlight_is_on() ? LED_FULL : LED_OFF;
 		led_cdev->max_brightness = LED_FULL;
 		led_cdev->brightness_set_blocking = hp_kbd_set_brightness;
-		led_cdev->flags = LED_RETAIN_AT_SHUTDOWN | LED_BRIGHT_HW_CHANGED | LED_CORE_SUSPENDRESUME;
+		led_cdev->flags = LED_RETAIN_AT_SHUTDOWN | LED_CORE_SUSPENDRESUME;
 		led_cdev->brightness_get = hp_kbd_get_brightness;
 		mc_subled_info = devm_kzalloc(&hp_wmi_platform_dev->dev,
 					       sizeof(struct mc_subled) * 3,
