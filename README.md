@@ -12,7 +12,7 @@ Please star the repo if this driver works for you. Thanks!
 > ```
 
 ### GUI
-There's a gui for this driver, it's not feature complete. I plan to rewrite it when i have free time but it should be enough for now. see [victus-control](https://github.com/Vilez0/victus-control)
+There's a gui for this driver. I plan to rewrite it when i have free time but it should be enough for now. see [victus-control](https://github.com/Vilez0/victus-control)
 
 ### Installation:
 
