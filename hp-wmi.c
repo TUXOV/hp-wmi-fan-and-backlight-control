@@ -666,10 +666,10 @@ static int omen_thermal_profile_get(void)
 	return data;
 }
 
-static int is_manual_fan_control_board(void)
+static bool is_manual_fan_control_board(void)
 {
 	if (force_fan_control_support)
-		return 1;
+		return true;
 	int ret;
 	unsigned char buffer[8] = { 0 };
 	ret = hp_wmi_perform_query(HPWMI_GET_SYSTEM_DESIGN_DATA, HPWMI_GM,
@@ -679,7 +679,7 @@ static int is_manual_fan_control_board(void)
 
 	pr_info("Hp wmi software fan support %d", buffer[4]);
 
-	return buffer[4];
+	return buffer[4] != 0;
 }
 
 static int hp_wmi_fan_speed_max_set(int enabled)
