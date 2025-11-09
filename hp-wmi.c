@@ -102,7 +102,7 @@ static const char * const victus_thermal_profile_boards[] = {
 
 /* DMI Board names of Victus 16-r and Victus 16-s laptops */
 static const char * const victus_s_thermal_profile_boards[] = {
-	"8BBE", "8BD4", "8C99", "8C9C"
+	"8BBE", "8BD4", "8C99", "8C9C", "8D41"
 };
 
 enum hp_wmi_radio {
