@@ -1471,9 +1471,20 @@ static enum led_brightness hp_kbd_get_brightness(struct led_classdev *led_cdev)
 static int hp_kbd_set_brightness(struct led_classdev *led_cdev,
 					enum led_brightness brightness)
 {
-	u8 data = HP_BACKLIGHT_ON;
-	hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
-			 sizeof(data), sizeof(data));
+
+	if (!hp_kbd_backlight_is_on()) {
+		u8 data = HP_BACKLIGHT_ON;
+		hp_wmi_perform_query(HPWMI_BRIGHTNESS_SET_QUERY, HPWMI_BACKLIGHT, &data,
+				 sizeof(data), sizeof(data));
+
+		// Turning the backlight on via wmi turns all zones, so we need to restore the other zones' brightness
+		for (int i = 0; i < ARRAY_SIZE(hp_multicolor_leds.devices); i++) {
+			if (!hp_multicolor_leds.devices[i].led_cdev.name  || &hp_multicolor_leds.devices[i].led_cdev == led_cdev) {
+				continue;
+			}
+			hp_kbd_set_brightness(&hp_multicolor_leds.devices[i].led_cdev, hp_multicolor_leds.devices[i].led_cdev.brightness);
+		}
+	}
 
 	led_cdev->brightness = brightness;
 	struct led_classdev_mc *mc_cdev = lcdev_to_mccdev(led_cdev);
@@ -1592,7 +1603,7 @@ static int __init hp_kbd_rgb_setup(void)
 		case HP_KEYBOARD_TYPE_SINGLEZONE_WITHOUT_NUMPAD:
 			pr_info("keyboard type %d, registering single zone RGB keyboard support\n",
 				keyboard_type);
-			return hp_mc_leds_register(4);
+			return hp_mc_leds_register(1);
 			break;
 		default:
 			pr_info("Unknown keyboard type %d, RGB keyboard support not available\n",
