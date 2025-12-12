@@ -33,6 +33,8 @@
 #include <linux/leds.h>
 #include <linux/led-class-multicolor.h>
 #include <linux/version.h>
+#include <linux/timer.h>
+#include <linux/workqueue.h>
 
 MODULE_AUTHOR("Matthew Garrett <mjg59@srcf.ucam.org>");
 MODULE_DESCRIPTION("HP laptop WMI driver");
@@ -54,6 +56,8 @@ MODULE_ALIAS("wmi:5FB7F034-2C63-45E9-BE91-3D44E2C707E4");
 
 #define HP_BACKLIGHT_OFF 0x64
 #define HP_BACKLIGHT_ON 0xE4
+
+#define HP_VICTUS_S_THERMAL_PROFILE_TIMER_SECONDS 60
 
 #define ACPI_AC_CLASS "ac_adapter"
 
@@ -291,6 +295,7 @@ struct hp_fan_control {
 	enum hp_fan_control_mode mode;
 	int max_rpms[2];
 	int target_rpms[2];
+    struct delayed_work victus_s_thermal_profile_trigger_work;
 };
 
 struct hp_mc_leds {
@@ -520,6 +525,13 @@ static int hp_wmi_get_fan_count_userdefine_trigger(void)
 
 	return fan_data[0]; /* Others bytes aren't providing fan count */
 }
+
+static void hp_victus_s_work_handler(struct work_struct *work)
+{
+    hp_wmi_get_fan_count_userdefine_trigger();
+    schedule_delayed_work(to_delayed_work(work), secs_to_jiffies(HP_VICTUS_S_THERMAL_PROFILE_TIMER_SECONDS));
+}
+
 
 static int hp_wmi_get_fan_speed(int fan)
 {
@@ -2571,6 +2583,8 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 			return hp_wmi_fan_speed_max_set(1);
 		case 1:
 			hp_fan_control.mode = HP_FAN_MODE_MANUAL;
+			if (is_victus_s_thermal_profile())
+				hp_wmi_get_fan_count_userdefine_trigger();
 			return 0;
 		case 2:
 			hp_fan_control.mode = HP_FAN_MODE_AUTOMATIC;
@@ -2675,6 +2689,9 @@ static int __init hp_wmi_init(void)
 		err = victus_s_register_powersource_event_handler();
 		if (err)
 			goto err_unregister_device;
+
+        INIT_DELAYED_WORK(&hp_fan_control.victus_s_thermal_profile_trigger_work, hp_victus_s_work_handler);
+        schedule_delayed_work(&hp_fan_control.victus_s_thermal_profile_trigger_work, secs_to_jiffies(HP_VICTUS_S_THERMAL_PROFILE_TIMER_SECONDS));
 	}
 
 	return 0;
@@ -2694,8 +2711,10 @@ static void __exit hp_wmi_exit(void)
 	if (is_omen_thermal_profile() || is_victus_thermal_profile())
 		omen_unregister_powersource_event_handler();
 
-	if (is_victus_s_thermal_profile())
+	if (is_victus_s_thermal_profile()) {
 		victus_s_unregister_powersource_event_handler();
+		cancel_delayed_work_sync(&hp_fan_control.victus_s_thermal_profile_trigger_work);
+	}
 
 	if (wmi_has_guid(HPWMI_EVENT_GUID))
 		hp_wmi_input_destroy();
