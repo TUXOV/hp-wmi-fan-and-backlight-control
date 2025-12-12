@@ -2599,7 +2599,7 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 		}
 		break;
 	case hwmon_fan:
-		if (val > hp_fan_control.max_rpms[channel] && !force_fan_control_support)
+		if (val > hp_fan_control.max_rpms[channel] && !force_fan_control_support || val < 0)
 			return -EINVAL;
 		if (hp_fan_control.have_manual_control) {
 			if (is_victus_s_thermal_profile())
