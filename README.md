@@ -18,7 +18,7 @@ There's a gui for this driver. I plan to rewrite it when i have free time but it
 
 Dkms:
 ```
-git clone https://github.com/Vilez0/hp-wmi-fan-and-backlight-control
+git clone https://github.com/TUXOV/hp-wmi-fan-and-backlight-control
 cd hp-wmi-fan-and-backlight-control
 make
 sudo make install-dkms
@@ -26,14 +26,14 @@ sudo make install-dkms
 
 Arch package:
 ```
-git clone https://github.com/Vilez0/hp-wmi-fan-and-backlight-control
+git clone https://github.com/TUXOV/hp-wmi-fan-and-backlight-control
 cd hp-wmi-fan-and-backlight-control
 make install-arch
 ```
 
 or if you just want to test the module (not permanent):
 ```bash
-git clone https://github.com/Vilez0/hp-wmi-fan-and-backlight-control
+git clone https://github.com/TUXOV/hp-wmi-fan-and-backlight-control
 cd hp-wmi-fan-and-backlight-control/
 make
 sudo rmmod hp-wmi
@@ -60,7 +60,7 @@ sudo insmod hp-wmi.ko
 
 ### Tested on:
 - Victus 16‑s1 (9Z791EA) — tested by me.
-- I need testers to report which models it works on or not. see https://github.com/Vilez0/hp-wmi-fan-and-backlight-control/issues/1
+- I need testers to report which models it works on or not. see https://github.com/TUXOV/hp-wmi-fan-and-backlight-control/issues/1
 
 ### Disclaimer
 USE IT AT YOUR OWN RISK. I DO NOT ACCEPT ANY RESPONSIBILITY.

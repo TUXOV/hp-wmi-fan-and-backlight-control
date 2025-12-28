@@ -5,7 +5,7 @@ pkgname=${_pkgbase}-dkms
 pkgver=$(grep -oP 'PACKAGE_VERSION="\K[^"]+' dkms.conf)
 pkgrel=0
 pkgdesc="Adds manual fan and keyboard backlight control to HP laptops on Linux"
-url="https://github.com/Vilez0/hp-wmi-fan-and-backlight-control"
+url="https://github.com/TUXOV/hp-wmi-fan-and-backlight-control"
 license=("GPL")
 arch=('x86_64')
 depends=('glibc' 'dkms')
