@@ -651,7 +651,7 @@ static DEFINE_MUTEX(active_platform_profile_lock);
  */
 static const char * const hp_kbd_zone_names[HP_KBD_MAX_ZONES] = {
 	[0] = "right",
-	[1] = "middle",
+	[1] = "center",
 	[2] = "left",
 	[3] = "wasd",
 };

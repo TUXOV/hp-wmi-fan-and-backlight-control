@@ -66,7 +66,7 @@ sudo insmod hp-wmi.ko
 ### Usage 
 - Keyboard RGB (4-zone): each zone is exposed as a multicolor LED under `/sys/class/leds/`, named after the part of the keyboard it covers (per `Documentation/leds/leds-class.rst`). HP 4-zone keyboards light up the WASD keys plus three vertical thirds of the rest of the keyboard:
   - `/sys/class/leds/hp::kbd_zoned_backlight-left`
-  - `/sys/class/leds/hp::kbd_zoned_backlight-middle`
+  - `/sys/class/leds/hp::kbd_zoned_backlight-center`
   - `/sys/class/leds/hp::kbd_zoned_backlight-right`
   - `/sys/class/leds/hp::kbd_zoned_backlight-wasd`
   - Use the multicolor interface attribute `multi_intensity` which accepts `R G B` (0–255 each).
