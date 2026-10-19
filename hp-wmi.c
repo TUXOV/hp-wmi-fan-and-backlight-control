@@ -13,10 +13,19 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/version.h>
+
 #include <linux/acpi.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
 #include <linux/array_size.h>
+#else
+/* flex_array_size() lives in overflow.h before v6.7 */
+#include <linux/overflow.h>
+#endif
 #include <linux/bits.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 #include <linux/cleanup.h>
+#endif
 #include <linux/compiler_attributes.h>
 #include <linux/dmi.h>
 #include <linux/fixp-arith.h>
@@ -24,6 +33,7 @@
 #include <linux/init.h>
 #include <linux/input.h>
 #include <linux/input/sparse-keymap.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/kstrtox.h>
 #include <linux/led-class-multicolor.h>
@@ -39,8 +49,87 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
-#include <linux/version.h>
 #include <linux/workqueue.h>
+
+/*
+ * The in-kernel driver relies on a few facilities that are too recent to be
+ * present in the older kernels this out-of-tree module also supports.  Provide
+ * small, self-contained fallbacks for them.
+ *
+ *  - mutex guards: guard()/scoped_guard() only exist since v6.5 and the
+ *    mutex guard class only since v6.6.
+ *  - system_dfl_wq was introduced in v6.18; older kernels only have system_wq.
+ *  - devm_mutex_init() was introduced in v6.10.
+ *  - platform_profile_cycle() was introduced in v6.10.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+/*
+ * guard() puts its declaration where it is used, which is exactly what the
+ * cleanup-based kernels do too.  Kernels older than v6.5 still enable
+ * -Wdeclaration-after-statement, so silence it for our fallback.
+ */
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+
+#ifndef __cleanup
+#define __cleanup(func) __attribute__((__cleanup__(func)))
+#endif
+
+typedef struct {
+	struct mutex *lock;
+} hp_mutex_guard_t;
+
+static inline hp_mutex_guard_t hp_mutex_guard_init(struct mutex *lock)
+{
+	hp_mutex_guard_t guard = { .lock = lock };
+
+	mutex_lock(lock);
+	return guard;
+}
+
+static inline void hp_mutex_guard_exit(hp_mutex_guard_t *guard)
+{
+	mutex_unlock(guard->lock);
+}
+
+#define hp_mutex_guard(var)						\
+	hp_mutex_guard_t var __cleanup(hp_mutex_guard_exit) =		\
+		hp_mutex_guard_init
+
+#ifdef guard
+#undef guard
+#endif
+#define guard(_name)	hp_mutex_guard(__UNIQUE_ID(guard))
+
+#ifdef scoped_guard
+#undef scoped_guard
+#endif
+#define scoped_guard(_name, args...)					\
+	for (hp_mutex_guard_t scope __cleanup(hp_mutex_guard_exit) =	\
+			hp_mutex_guard_init(args),			\
+	     *done = NULL; !done; done = (void *)1)
+#endif /* < 6.6 */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
+#ifndef system_dfl_wq
+#define system_dfl_wq system_wq
+#endif
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+#ifndef devm_mutex_init
+static inline int hp_devm_mutex_init(struct device *dev, struct mutex *lock)
+{
+	mutex_init(lock);
+	return 0;
+}
+#define devm_mutex_init hp_devm_mutex_init
+#endif
+#endif
+
+/* ACPI_AC_CLASS was only added to the exported headers in later kernels. */
+#ifndef ACPI_AC_CLASS
+#define ACPI_AC_CLASS "ac_adapter"
+#endif
 
 MODULE_AUTHOR("Matthew Garrett <mjg59@srcf.ucam.org>");
 MODULE_DESCRIPTION("HP laptop WMI driver");
@@ -341,7 +430,7 @@ static const struct dmi_system_id hp_wmi_feature_boards[] __initconst = {
 	},
 	{
 		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8DD6") },
-		.driver_data = (void *)&omen_v1_no_ec_thermal_params,
+		.driver_data = (void *)&omen_v1_no_ec_board_params,
 	},
 	{
 		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8E35") },
@@ -582,8 +671,9 @@ static struct hp_mc_leds hp_multicolor_leds;
 static struct input_dev *hp_wmi_input_dev;
 static struct input_dev *camera_shutter_input_dev;
 static struct platform_device *hp_wmi_platform_dev;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 static struct device *platform_profile_device;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
+#else
 static struct platform_profile_handler platform_profile_handler;
 #endif
 static struct notifier_block platform_power_source_nb;
@@ -654,7 +744,10 @@ struct victus_s_fan_table {
 
 /*
  * 90s delay to prevent the firmware from resetting fan mode after fixed
- * 120s timeout
+ * 120s timeout.
+ *
+ * Use msecs_to_jiffies() rather than secs_to_jiffies(), which is only
+ * available since v6.14.
  */
 #define KEEP_ALIVE_DELAY_SECS     90
 
@@ -1395,34 +1488,37 @@ ATTRIBUTE_GROUPS(hp_wmi);
 
 static void hp_kbd_brightness_set_by_hwd(u32 event_data);
 
-static void hp_wmi_notify(union acpi_object *obj, void *context)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
+/*
+ * platform_profile_cycle() was added in v6.10.  On older kernels implement the
+ * same behaviour using our registered legacy platform_profile_handler.
+ */
+static void hp_wmi_platform_profile_cycle(void)
 {
-	u32 event_id, event_data;
-	u32 *location;
+	enum platform_profile_option profile;
+	int err;
+
+	if (!platform_profile_support)
+		return;
+
+	err = platform_profile_handler.profile_get(&platform_profile_handler,
+						   &profile);
+	if (err)
+		return;
+
+	do {
+		profile = (profile + 1) % PLATFORM_PROFILE_LAST;
+	} while (!test_bit(profile, platform_profile_handler.choices));
+
+	platform_profile_handler.profile_set(&platform_profile_handler, profile);
+}
+#else
+#define hp_wmi_platform_profile_cycle()	platform_profile_cycle()
+#endif
+
+static void hp_wmi_process_event(u32 event_id, u32 event_data)
+{
 	int key_code;
-
-	if (!obj)
-		return;
-	if (obj->type != ACPI_TYPE_BUFFER) {
-		pr_info("Unknown response received %d\n", obj->type);
-		return;
-	}
-
-	/*
-	 * Depending on ACPI version the concatenation of id and event data
-	 * inside _WED function will result in a 8 or 16 byte buffer.
-	 */
-	location = (u32 *)obj->buffer.pointer;
-	if (obj->buffer.length == 8) {
-		event_id = *location;
-		event_data = *(location + 1);
-	} else if (obj->buffer.length == 16) {
-		event_id = *location;
-		event_data = *(location + 2);
-	} else {
-		pr_info("Unknown buffer length %d\n", obj->buffer.length);
-		return;
-	}
 
 	switch (event_id) {
 	case HPWMI_DOCK_EVENT:
@@ -1448,7 +1544,7 @@ static void hp_wmi_notify(union acpi_object *obj, void *context)
 			pr_info("Unknown key code - 0x%x\n", key_code);
 		break;
 	case HPWMI_FN_P_HOTKEY:
-		platform_profile_cycle();
+		hp_wmi_platform_profile_cycle();
 		break;
 	case HPWMI_OMEN_KEY:
 		if (event_data) /* Only should be true for HP Omen */
@@ -1524,6 +1620,84 @@ static void hp_wmi_notify(union acpi_object *obj, void *context)
 		break;
 	}
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+static void hp_wmi_notify(union acpi_object *obj, void *context)
+{
+	u32 event_id, event_data;
+	u32 *location;
+
+	if (!obj)
+		return;
+	if (obj->type != ACPI_TYPE_BUFFER) {
+		pr_info("Unknown response received %d\n", obj->type);
+		return;
+	}
+
+	/*
+	 * Depending on ACPI version the concatenation of id and event data
+	 * inside _WED function will result in a 8 or 16 byte buffer.
+	 */
+	location = (u32 *)obj->buffer.pointer;
+	if (obj->buffer.length == 8) {
+		event_id = *location;
+		event_data = *(location + 1);
+	} else if (obj->buffer.length == 16) {
+		event_id = *location;
+		event_data = *(location + 2);
+	} else {
+		pr_info("Unknown buffer length %d\n", obj->buffer.length);
+		return;
+	}
+
+	hp_wmi_process_event(event_id, event_data);
+}
+#else
+static void hp_wmi_notify(u32 value, void *context)
+{
+	struct acpi_buffer response = { ACPI_ALLOCATE_BUFFER, NULL };
+	union acpi_object *obj;
+	acpi_status status;
+	u32 event_id, event_data;
+	u32 *location;
+
+	status = wmi_get_event_data(value, &response);
+	if (status != AE_OK) {
+		pr_info("bad event status 0x%x\n", status);
+		return;
+	}
+
+	obj = (union acpi_object *)response.pointer;
+
+	if (!obj)
+		return;
+	if (obj->type != ACPI_TYPE_BUFFER) {
+		pr_info("Unknown response received %d\n", obj->type);
+		kfree(obj);
+		return;
+	}
+
+	/*
+	 * Depending on ACPI version the concatenation of id and event data
+	 * inside _WED function will result in a 8 or 16 byte buffer.
+	 */
+	location = (u32 *)obj->buffer.pointer;
+	if (obj->buffer.length == 8) {
+		event_id = *location;
+		event_data = *(location + 1);
+	} else if (obj->buffer.length == 16) {
+		event_id = *location;
+		event_data = *(location + 2);
+	} else {
+		pr_info("Unknown buffer length %d\n", obj->buffer.length);
+		kfree(obj);
+		return;
+	}
+	kfree(obj);
+
+	hp_wmi_process_event(event_id, event_data);
+}
+#endif
 
 static int __init hp_wmi_input_setup(void)
 {
@@ -2288,12 +2462,17 @@ static int platform_profile_victus_get_ec(enum platform_profile_option *profile)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 static int platform_profile_victus_get(struct device *dev,
 #else
-static int platform_profile_victus_get(struct platform_profile_handler *pprof,
+static int __maybe_unused
+platform_profile_victus_get(struct platform_profile_handler *pprof,
 #endif
 				       enum platform_profile_option *profile)
 {
 	/* Same behaviour as platform_profile_omen_get */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
 	return platform_profile_omen_get(dev, profile);
+#else
+	return platform_profile_omen_get(pprof, profile);
+#endif
 }
 
 static int platform_profile_victus_set_ec(enum platform_profile_option profile)
@@ -2945,7 +3124,11 @@ static int __init hp_wmi_bios_setup(struct platform_device *device)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+static int __exit hp_wmi_bios_remove(struct platform_device *device)
+#else
 static void __exit hp_wmi_bios_remove(struct platform_device *device)
+#endif
 {
 	int i;
 	struct hp_wmi_hwmon_priv *priv;
@@ -2975,6 +3158,10 @@ static void __exit hp_wmi_bios_remove(struct platform_device *device)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
 	if (platform_profile_support)
 		platform_profile_remove();
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
+	return 0;
 #endif
 }
 
@@ -3210,7 +3397,12 @@ static int hp_wmi_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 	}
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
 static const struct hwmon_channel_info * const info[] = {
+#else
+/* hwmon_chip_info.info lost the inner const qualifier in v6.5. */
+static const struct hwmon_channel_info *info[] = {
+#endif
 	HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT, HWMON_F_INPUT),
 	HWMON_CHANNEL_INFO(pwm, HWMON_PWM_ENABLE | HWMON_PWM_INPUT, HWMON_PWM_INPUT),
 	NULL
