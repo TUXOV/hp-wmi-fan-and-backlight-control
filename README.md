@@ -26,6 +26,23 @@ cd hp-wmi-fan-and-backlight-control
 make install-arch
 ```
 
+Fedora (akmods):
+```
+sudo dnf install akmods kmodtool kernel-devel gcc make elfutils-libelf-devel rpm-build
+git clone https://github.com/TUXOV/hp-wmi-fan-and-backlight-control
+cd hp-wmi-fan-and-backlight-control
+make akmod
+sudo dnf install ./akmod-build/RPMS/*/*.rpm
+```
+Install all the generated RPMs in one transaction: the akmod package depends on the common package built next to it.
+
+The akmod package registers the module with akmods, which builds it for the running kernel and automatically rebuilds it after kernel updates.
+
+To remove it:
+```
+sudo make uninstall-akmod
+```
+
 NixOS module:
 
 In your system flake, add the repo as an input and enable the module:

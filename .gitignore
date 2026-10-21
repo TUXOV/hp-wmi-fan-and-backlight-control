@@ -9,5 +9,6 @@ Module.symvers
 modules.order
 pkg/
 *.pkg.tar.zst
+akmod-build/
 .vscode
 src/
