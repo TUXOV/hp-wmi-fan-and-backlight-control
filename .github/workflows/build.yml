@@ -1,0 +1,71 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Arch Linux
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git linux-headers tar gzip ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Build kernel module
+        run: |
+          KDIR="$(ls -d /usr/lib/modules/*/build | head -n1)"
+          echo "Using kernel build directory: $KDIR"
+          make KDIR="$KDIR"
+
+      - name: Build Arch DKMS package
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c 'makepkg --noconfirm --nodeps'
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: "*.pkg.tar.zst"
+          if-no-files-found: error
+
+  fedora:
+    name: Fedora
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y \
+            git gcc make kernel-devel elfutils-libelf-devel \
+            rpm-build kmodtool akmods tar gzip ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Build kernel module
+        run: |
+          KDIR="$(ls -d /usr/src/kernels/* | head -n1)"
+          echo "Using kernel build directory: $KDIR"
+          make KDIR="$KDIR"
+
+      - name: Build akmod RPMs
+        run: make akmod
+
+      - name: Upload Fedora RPMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: fedora-rpms
+          path: "akmod-build/RPMS/**/*.rpm"
+          if-no-files-found: error
