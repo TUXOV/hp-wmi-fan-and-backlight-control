@@ -214,6 +214,14 @@ static const struct thermal_profile_params victus_s_thermal_params = {
 	.ec_tp_offset	= HP_EC_OFFSET_UNKNOWN,
 };
 
+/* Victus S profile values, readable from the Omen EC offset (board 8DD0) */
+static const struct thermal_profile_params victus_s_omen_ec_thermal_params = {
+	.performance	= HP_VICTUS_S_THERMAL_PROFILE_PERFORMANCE,
+	.balanced	= HP_VICTUS_S_THERMAL_PROFILE_DEFAULT,
+	.low_power	= HP_VICTUS_S_THERMAL_PROFILE_DEFAULT,
+	.ec_tp_offset	= HP_OMEN_EC_THERMAL_PROFILE_OFFSET,
+};
+
 static const struct thermal_profile_params omen_v1_thermal_params = {
 	.performance	= HP_OMEN_V1_THERMAL_PROFILE_PERFORMANCE,
 	.balanced	= HP_OMEN_V1_THERMAL_PROFILE_DEFAULT,
@@ -238,6 +246,8 @@ static const struct thermal_profile_params omen_v1_no_ec_thermal_params = {
 struct hp_wmi_fan_profile_params {
 	int (*get_fan_speed)(int fan);
 	bool fan_table;
+	/* Value of the fan speed set query that hands the fan back to the EC */
+	u8 auto_speed;
 };
 
 struct hp_wmi_board_params {
@@ -252,9 +262,24 @@ static const struct hp_wmi_fan_profile_params victus_s_fan_profile_params = {
 	.fan_table	= true,
 };
 
+/*
+ * On board 8DD0 a fan speed of 0x00 stops the fans for as long as the user
+ * defined mode is active; 0xFF makes the EC follow its own fan curve.
+ */
+static const struct hp_wmi_fan_profile_params victus_s_ff_fan_profile_params = {
+	.get_fan_speed	= hp_wmi_get_fan_speed_victus_s,
+	.fan_table	= true,
+	.auto_speed	= 0xFF,
+};
+
 static const struct hp_wmi_board_params victus_s_board_params = {
 	.thermal_profile	= &victus_s_thermal_params,
 	.fan_profile		= &victus_s_fan_profile_params,
+};
+
+static const struct hp_wmi_board_params victus_s_omen_ec_board_params = {
+	.thermal_profile	= &victus_s_omen_ec_thermal_params,
+	.fan_profile		= &victus_s_ff_fan_profile_params,
 };
 
 static const struct hp_wmi_board_params omen_v1_board_params = {
@@ -427,6 +452,10 @@ static const struct dmi_system_id hp_wmi_feature_boards[] __initconst = {
 	{
 		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8D88") },
 		.driver_data = (void *)&omen_v1_no_ec_board_params,
+	},
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8DD0") },
+		.driver_data = (void *)&victus_s_omen_ec_board_params,
 	},
 	{
 		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8DD6") },
@@ -1055,15 +1084,19 @@ static int hp_wmi_fan_speed_max_set(int enabled)
 static int hp_wmi_fan_speed_set(struct hp_wmi_hwmon_priv *priv)
 {
 	u8 fan_speed[2];
+	u8 auto_speed = HP_FAN_SPEED_AUTOMATIC;
 	int ret;
 
+	if (active_board_params && active_board_params->fan_profile)
+		auto_speed = active_board_params->fan_profile->auto_speed;
+
 	if (priv->cpu_pwm == HP_FAN_SPEED_AUTOMATIC)
-		fan_speed[CPU_FAN] = HP_FAN_SPEED_AUTOMATIC;
+		fan_speed[CPU_FAN] = auto_speed;
 	else
 		fan_speed[CPU_FAN] = pwm_to_rpm(priv->cpu_pwm, priv);
 
 	if (priv->gpu_pwm == HP_FAN_SPEED_AUTOMATIC)
-		fan_speed[GPU_FAN] = HP_FAN_SPEED_AUTOMATIC;
+		fan_speed[GPU_FAN] = auto_speed;
 	else
 		fan_speed[GPU_FAN] = pwm_to_rpm(priv->gpu_pwm, priv);
 
