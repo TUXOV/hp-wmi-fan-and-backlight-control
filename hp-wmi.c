@@ -263,8 +263,8 @@ static const struct hp_wmi_fan_profile_params victus_s_fan_profile_params = {
 };
 
 /*
- * On board 8DD0 a fan speed of 0x00 stops the fans for as long as the user
- * defined mode is active; 0xFF makes the EC follow its own fan curve.
+ * On boards 8C2F and 8DD0 a fan speed of 0x00 stops the fans for as long as
+ * the user defined mode is active; 0xFF makes the EC follow its own fan curve.
  */
 static const struct hp_wmi_fan_profile_params victus_s_ff_fan_profile_params = {
 	.get_fan_speed	= hp_wmi_get_fan_speed_victus_s,
@@ -275,6 +275,11 @@ static const struct hp_wmi_fan_profile_params victus_s_ff_fan_profile_params = {
 static const struct hp_wmi_board_params victus_s_board_params = {
 	.thermal_profile	= &victus_s_thermal_params,
 	.fan_profile		= &victus_s_fan_profile_params,
+};
+
+static const struct hp_wmi_board_params victus_s_ff_board_params = {
+	.thermal_profile	= &victus_s_thermal_params,
+	.fan_profile		= &victus_s_ff_fan_profile_params,
 };
 
 static const struct hp_wmi_board_params victus_s_omen_ec_board_params = {
@@ -416,6 +421,10 @@ static const struct dmi_system_id hp_wmi_feature_boards[] __initconst = {
 	{
 		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8BD5") },
 		.driver_data = (void *)&victus_s_board_params,
+	},
+	{
+		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8C2F") },
+		.driver_data = (void *)&victus_s_ff_board_params,
 	},
 	{
 		.matches = { DMI_MATCH(DMI_BOARD_NAME, "8C76") },
